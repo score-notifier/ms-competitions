@@ -9,6 +9,8 @@ import { PrismaClient } from '@prisma/client';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { NATS_SERVICE } from 'src/config';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { CreateLeagueDto } from './dto/create-league.dto';
+import { CreateMatchDto } from './dto';
 
 @Injectable()
 export class CompetitionsService extends PrismaClient implements OnModuleInit {
@@ -21,7 +23,6 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
   async onModuleInit() {
     await this.$connect();
     this.logger.log('Database connected');
-    await this.createFakeLeague();
   }
 
   async createTeams(createTeamDtoList: CreateTeamDto[]) {
@@ -29,7 +30,7 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
       this.logger.log('Creating new teams', createTeamDtoList);
 
       for (const createTeamDto of createTeamDtoList) {
-        const { name, leagueId, liveScoreId } = createTeamDto;
+        const { name, leagueId, liveScoreURL } = createTeamDto;
 
         const leagueExists = await this.league.findUnique({
           where: { id: leagueId },
@@ -42,16 +43,15 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
         }
 
         await this.team.upsert({
-          where: { liveScoreId },
+          where: { name },
           update: {
-            name,
             leagueId,
+            liveScoreURL,
           },
           create: {
-            id: undefined,
-            liveScoreId,
             name,
             leagueId,
+            liveScoreURL,
           },
         });
       }
@@ -63,40 +63,195 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
     }
   }
 
+  async createMatches(createMatchDtoList: CreateMatchDto[]) {
+    this.logger.log('Creating new matches');
+    try {
+      for (const createMatchDto of createMatchDtoList) {
+        const homeTeam = await this.team.findUnique({
+          where: { name: createMatchDto.homeTeam },
+        });
+        const awayTeam = await this.team.findUnique({
+          where: { name: createMatchDto.awayTeam },
+        });
+        const league = await this.league.findUnique({
+          where: { id: createMatchDto.leagueId },
+        });
+
+        if (!awayTeam || !homeTeam || !league) {
+          // Sometimes when scraping the teams, the table of the league is not available for some reason,
+          // in that case I can't create the teams of that league on the database
+          this.logger.warn('League, home team or away team does not exist', {
+            homeTeam: homeTeam ? homeTeam.name : 'null',
+            awayTeam: awayTeam ? awayTeam.name : 'null',
+            league: league ? league.name : createMatchDto.leagueId,
+          });
+
+          continue;
+        }
+
+        await this.match.upsert({
+          where: {
+            liveScoreURL: createMatchDto.liveScoreURL,
+          },
+          update: {
+            result: createMatchDto.result,
+          },
+          create: {
+            homeTeam: {
+              connect: { id: homeTeam.id },
+            },
+            awayTeam: {
+              connect: { id: awayTeam.id },
+            },
+            league: {
+              connect: { id: league.id },
+            },
+            date: createMatchDto.date,
+            time: createMatchDto.time,
+            UTCDate: createMatchDto.UTCDate,
+            liveScoreURL: createMatchDto.liveScoreURL,
+            result: createMatchDto.result,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error('Error creating matches', error, createMatchDtoList);
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async createLeagues(createLeagueDtoList: CreateLeagueDto[]) {
+    try {
+      this.logger.log('Creating new leagues', createLeagueDtoList);
+
+      for (const createLeagueDto of createLeagueDtoList) {
+        const { name, url, country } = createLeagueDto;
+
+        await this.league.upsert({
+          where: { url },
+          update: {
+            name,
+            country,
+          },
+          create: {
+            id: undefined,
+            name,
+            country,
+            url,
+          },
+        });
+      }
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getLeagues() {
+    try {
+      return this.league.findMany();
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getTeamByName(teamName: string) {
+    try {
+      return this.team.findUnique({
+        where: { name: teamName },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getTeams(leagueId: string) {
+    try {
+      return this.match.findMany({
+        where: { leagueId },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getMatches(leagueId: string, teamId: string) {
+    try {
+      return this.match.findMany({
+        where: {
+          leagueId,
+          OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+        },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getUpcomingMatches(leagueId: string, teamId: string) {
+    try {
+      return this.match.findMany({
+        where: {
+          leagueId,
+          OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+          UTCDate: {
+            gte: new Date(),
+          },
+        },
+        orderBy: {
+          UTCDate: 'asc',
+        },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
   async checkLeagueExists(leagueId: string): Promise<{ exists: boolean }> {
-    const league = await this.league.findUnique({
-      where: { id: leagueId },
-    });
-    return { exists: !!league };
+    try {
+      const league = await this.league.findUnique({
+        where: { id: leagueId },
+      });
+      return { exists: !!league };
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
   }
 
   async checkTeamExists(teamId: string): Promise<{ exists: boolean }> {
-    const team = await this.team.findUnique({
-      where: { id: teamId },
-    });
-    return { exists: !!team };
-  }
-
-  // This is a fake league that will be used to create teams,
-  // since the league IDs logic is not available at this moment
-  private async createFakeLeague() {
-    const fakeLeagueId = '15ed7a50-db72-4f13-afbc-af4268b492bc';
-    const fakeLeagueName = 'Fake League';
-
-    const league = await this.league.findUnique({
-      where: { id: fakeLeagueId },
-    });
-
-    if (!league) {
-      await this.league.create({
-        data: {
-          id: fakeLeagueId,
-          name: fakeLeagueName,
-        },
+    try {
+      const team = await this.team.findUnique({
+        where: { id: teamId },
       });
-      this.logger.log(`Fake league created with ID ${fakeLeagueId}`);
-    } else {
-      this.logger.log(`Fake league already exists with ID ${fakeLeagueId}`);
+      return { exists: !!team };
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
     }
   }
 }

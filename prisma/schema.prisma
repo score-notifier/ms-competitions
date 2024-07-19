@@ -14,19 +14,41 @@ datasource db {
 }
 
 model Team {
-  id          String   @id @default(uuid())
-  name        String
-  liveScoreId Int      @unique
-  leagueId    String
-  league      League   @relation(fields: [leagueId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String   @unique
+  liveScoreURL String
+  leagueId     String
+  league       League   @relation(fields: [leagueId], references: [id])
+  matchesHome  Match[]  @relation("HomeMatches")
+  matchesAway  Match[]  @relation("AwayMatches")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model League {
   id        String   @id @default(uuid())
   name      String
+  country   String
+  url       String   @unique
   teams     Team[]   @relation
+  matches   Match[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Match {
+  id           String    @id @default(uuid())
+  homeTeamId   String?
+  awayTeamId   String?
+  leagueId     String
+  liveScoreURL String    @unique
+  date         String
+  time         String
+  UTCDate      DateTime?
+  result       Json?
+  homeTeam     Team?     @relation("HomeMatches", fields: [homeTeamId], references: [id])
+  awayTeam     Team?     @relation("AwayMatches", fields: [awayTeamId], references: [id])
+  league       League?   @relation(fields: [leagueId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }

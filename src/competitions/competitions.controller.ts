@@ -1,7 +1,7 @@
-import { Controller } from '@nestjs/common';
+import { Controller, ParseUUIDPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { CompetitionsService } from './competitions.service';
-import { CreateTeamDto } from './dto/create-team.dto';
+import { CreateTeamDto, CreateLeagueDto, CreateMatchDto } from './dto';
 
 @Controller()
 export class CompetitionsController {
@@ -12,6 +12,42 @@ export class CompetitionsController {
     return this.competitionsService.createTeams(createTeamDtoList);
   }
 
+  @MessagePattern('competitions.leagues.create')
+  async createLeagues(@Payload() createLeagueDtoList: CreateLeagueDto[]) {
+    return this.competitionsService.createLeagues(createLeagueDtoList);
+  }
+
+  @MessagePattern('competitions.matches.create')
+  async createMatches(@Payload() createMatchDtoList: CreateMatchDto[]) {
+    return this.competitionsService.createMatches(createMatchDtoList);
+  }
+
+  @MessagePattern('competitions.get.leagues')
+  async getLeagues() {
+    return this.competitionsService.getLeagues();
+  }
+
+  @MessagePattern('competitions.leagues')
+  async getTeams(@Payload('leagueId', ParseUUIDPipe) leagueId: string) {
+    return this.competitionsService.getTeams(leagueId);
+  }
+
+  @MessagePattern('competitions.leagues.matches')
+  async getMatches(
+    @Payload('leagueId', ParseUUIDPipe) leagueId: string,
+    @Payload('teamId', ParseUUIDPipe) teamId: string,
+  ) {
+    return this.competitionsService.getMatches(leagueId, teamId);
+  }
+
+  @MessagePattern('competitions.leagues.upcoming.matches')
+  async getUpcomingMatches(
+    @Payload('leagueId', ParseUUIDPipe) leagueId: string,
+    @Payload('teamId', ParseUUIDPipe) teamId: string,
+  ) {
+    return this.competitionsService.getUpcomingMatches(leagueId, teamId);
+  }
+
   @MessagePattern('competitions.league.exists')
   async checkLeagueExists(@Payload() data: { leagueId: string }) {
     return this.competitionsService.checkLeagueExists(data.leagueId);
@@ -20,5 +56,10 @@ export class CompetitionsController {
   @MessagePattern('competitions.team.exists')
   async checkTeamExists(@Payload() data: { teamId: string }) {
     return this.competitionsService.checkTeamExists(data.teamId);
+  }
+
+  @MessagePattern('competitions.team')
+  async getTeamByName(@Payload('teamName') teamName: string) {
+    return this.competitionsService.getTeamByName(teamName);
   }
 }
