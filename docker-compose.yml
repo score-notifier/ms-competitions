@@ -1,4 +1,9 @@
 services:
+  nats-server:
+    image: nats:2.10.0-alpine
+    ports:
+      - "4222:4222"
+
   db-competitions:
     container_name: competitions_database
     image: mysql:8.4.1

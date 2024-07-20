@@ -26,14 +26,14 @@ model Team {
 }
 
 model League {
-  id        String   @id @default(uuid())
-  name      String
-  country   String
-  url       String   @unique
-  teams     Team[]   @relation
-  matches   Match[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  country      String
+  liveScoreURL String   @unique
+  teams        Team[]   @relation
+  matches      Match[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Match {

@@ -66,54 +66,47 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
   async createMatches(createMatchDtoList: CreateMatchDto[]) {
     this.logger.log('Creating new matches');
     try {
-      for (const createMatchDto of createMatchDtoList) {
-        const homeTeam = await this.team.findUnique({
-          where: { name: createMatchDto.homeTeam },
-        });
-        const awayTeam = await this.team.findUnique({
-          where: { name: createMatchDto.awayTeam },
-        });
-        const league = await this.league.findUnique({
-          where: { id: createMatchDto.leagueId },
-        });
+      await this.$transaction(async (prisma) => {
+        const promises = createMatchDtoList.map(async (createMatchDto) => {
+          const [homeTeam, awayTeam, league] = await Promise.all([
+            prisma.team.findUnique({
+              where: { name: createMatchDto.homeTeam },
+            }),
+            prisma.team.findUnique({
+              where: { name: createMatchDto.awayTeam },
+            }),
+            prisma.league.findUnique({
+              where: { id: createMatchDto.leagueId },
+            }),
+          ]);
 
-        if (!awayTeam || !homeTeam || !league) {
-          // Sometimes when scraping the teams, the table of the league is not available for some reason,
-          // in that case I can't create the teams of that league on the database
-          this.logger.warn('League, home team or away team does not exist', {
-            homeTeam: homeTeam ? homeTeam.name : 'null',
-            awayTeam: awayTeam ? awayTeam.name : 'null',
-            league: league ? league.name : createMatchDto.leagueId,
+          if (!awayTeam || !homeTeam || !league) {
+            this.logger.warn('League, home team or away team does not exist', {
+              homeTeam: homeTeam ? homeTeam.name : 'null',
+              awayTeam: awayTeam ? awayTeam.name : 'null',
+              league: league ? league.name : createMatchDto.leagueId,
+            });
+            return;
+          }
+
+          await prisma.match.upsert({
+            where: { liveScoreURL: createMatchDto.liveScoreURL },
+            update: { result: createMatchDto.result },
+            create: {
+              homeTeam: { connect: { id: homeTeam.id } },
+              awayTeam: { connect: { id: awayTeam.id } },
+              league: { connect: { id: league.id } },
+              date: createMatchDto.date,
+              time: createMatchDto.time,
+              UTCDate: createMatchDto.UTCDate,
+              liveScoreURL: createMatchDto.liveScoreURL,
+              result: createMatchDto.result,
+            },
           });
-
-          continue;
-        }
-
-        await this.match.upsert({
-          where: {
-            liveScoreURL: createMatchDto.liveScoreURL,
-          },
-          update: {
-            result: createMatchDto.result,
-          },
-          create: {
-            homeTeam: {
-              connect: { id: homeTeam.id },
-            },
-            awayTeam: {
-              connect: { id: awayTeam.id },
-            },
-            league: {
-              connect: { id: league.id },
-            },
-            date: createMatchDto.date,
-            time: createMatchDto.time,
-            UTCDate: createMatchDto.UTCDate,
-            liveScoreURL: createMatchDto.liveScoreURL,
-            result: createMatchDto.result,
-          },
         });
-      }
+
+        await Promise.all(promises);
+      });
     } catch (error) {
       this.logger.error('Error creating matches', error, createMatchDtoList);
       throw new RpcException({
@@ -128,10 +121,10 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
       this.logger.log('Creating new leagues', createLeagueDtoList);
 
       for (const createLeagueDto of createLeagueDtoList) {
-        const { name, url, country } = createLeagueDto;
+        const { name, liveScoreURL, country } = createLeagueDto;
 
         await this.league.upsert({
-          where: { url },
+          where: { liveScoreURL },
           update: {
             name,
             country,
@@ -140,7 +133,7 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
             id: undefined,
             name,
             country,
-            url,
+            liveScoreURL,
           },
         });
       }
@@ -155,6 +148,32 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
   async getLeagues() {
     try {
       return this.league.findMany();
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getLeagueByScoreLiveURL(liveScoreURL: string) {
+    try {
+      return this.league.findUnique({
+        where: { liveScoreURL },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getTeamByScoreLiveURL(liveScoreURL: string) {
+    try {
+      return this.team.findFirst({
+        where: { liveScoreURL },
+      });
     } catch (error) {
       throw new RpcException({
         status: HttpStatus.BAD_REQUEST,
