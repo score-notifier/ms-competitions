@@ -72,4 +72,14 @@ export class CompetitionsController {
   async getTeamByScoreLiveURL(@Payload('scoreLiveURL') scoreLiveURL: string) {
     return this.competitionsService.getTeamByScoreLiveURL(scoreLiveURL);
   }
+
+  @MessagePattern('competitions.league.id')
+  async getLeagueById(@Payload('leagueId', ParseUUIDPipe) leagueId: string) {
+    return this.competitionsService.getLeagueById(leagueId);
+  }
+
+  @MessagePattern('competitions.team.id')
+  async getTeamById(@Payload('teamId', ParseUUIDPipe) teamId: string) {
+    return this.competitionsService.getTeamById(teamId);
+  }
 }

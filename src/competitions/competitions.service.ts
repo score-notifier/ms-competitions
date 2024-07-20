@@ -195,9 +195,35 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
     }
   }
 
+  async getLeagueById(leagueId: string) {
+    try {
+      return this.league.findUnique({
+        where: { id: leagueId },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
+  async getTeamById(teamId: string) {
+    try {
+      return this.team.findUnique({
+        where: { id: teamId },
+      });
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
+  }
+
   async getTeams(leagueId: string) {
     try {
-      return this.match.findMany({
+      return this.team.findMany({
         where: { leagueId },
       });
     } catch (error) {
