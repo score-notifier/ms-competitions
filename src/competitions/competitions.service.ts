@@ -8,8 +8,7 @@ import {
 import { PrismaClient } from '@prisma/client';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { NATS_SERVICE } from 'src/config';
-import { CreateTeamDto } from './dto/create-team.dto';
-import { CreateLeagueDto } from './dto/create-league.dto';
+import { CreateTeamDto, CreateLeagueDto } from './dto';
 import { CreateMatchDto } from './dto';
 
 @Injectable()
@@ -55,7 +54,12 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
           },
         });
       }
+
+      return {
+        success: true,
+      };
     } catch (error) {
+      this.logger.error('Error creating teams', error, createTeamDtoList);
       throw new RpcException({
         status: HttpStatus.BAD_REQUEST,
         message: error.message,
@@ -64,7 +68,7 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
   }
 
   async createMatches(createMatchDtoList: CreateMatchDto[]) {
-    this.logger.log('Creating new matches');
+    this.logger.log('Creating new matches', createMatchDtoList.length);
     try {
       await this.$transaction(async (prisma) => {
         const promises = createMatchDtoList.map(async (createMatchDto) => {
@@ -130,14 +134,18 @@ export class CompetitionsService extends PrismaClient implements OnModuleInit {
             country,
           },
           create: {
-            id: undefined,
             name,
             country,
             liveScoreURL,
           },
         });
       }
+
+      return {
+        success: true,
+      };
     } catch (error) {
+      this.logger.error('Error creating leagues', error, createLeagueDtoList);
       throw new RpcException({
         status: HttpStatus.BAD_REQUEST,
         message: error.message,
